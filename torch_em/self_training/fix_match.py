@@ -105,7 +105,7 @@ class FixMatchTrainer(torch_em.trainer.DefaultTrainer):
         if self.unsupervised_val_loader is None:
             val_loader = self.supervised_val_loader
         else:
-            val_loader = self.unsupervised_train_loader
+            val_loader = self.unsupervised_val_loader
 
         # Check that we have at least one of supvervised / unsupervised loss and metric.
         assert sum((
@@ -267,6 +267,8 @@ class FixMatchTrainer(torch_em.trainer.DefaultTrainer):
                 supervised_pred = self.model(xs)
                 supervised_loss = self.supervised_loss(supervised_pred, ys)
 
+            backprop(supervised_loss/2)
+
             with forward_context(), torch.no_grad():
                 # Compute the pseudo labels.
                 pseudo_labels, label_filter = self.pseudo_labeler(self.model, teacher_input)
@@ -286,8 +288,9 @@ class FixMatchTrainer(torch_em.trainer.DefaultTrainer):
                 unsup_pred_inv = self.augmenter.student.reverse_transform(unsup_pred)
                 unsupervised_loss = self.unsupervised_loss(unsup_pred_inv, pseudo_labels_inv, label_filter_inv)
 
-            loss = (supervised_loss + unsupervised_loss) / 2
-            backprop(loss)
+            loss = (supervised_loss + unsupervised_loss) / 2 # loss still for logger combined
+            # backprop(loss)
+            backprop(unsupervised_loss / 2)
 
             if self.logger is not None:
                 with torch.no_grad(), forward_context():

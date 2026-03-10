@@ -63,7 +63,7 @@ class DefaultPseudoLabeler:
             label_mask = None
         else:
             mask_input = pseudo_labels if self.mask_channel is None\
-                else pseudo_labels[self.mask_channel:(self.mask_channel+1)]
+        else pseudo_labels[:, self.mask_channel:(self.mask_channel+1)] # slicing must include batch (B, C, ...)
             label_mask = self._compute_label_mask_both_sides(mask_input) if self.threshold_from_both_sides\
                 else self._compute_label_mask_one_side(mask_input)
             if self.mask_channel is not None:
@@ -289,7 +289,7 @@ class ScheduledPseudoLabeler:
             label_mask = None
         else:
             mask_input = pseudo_labels if self.mask_channel is None\
-                else pseudo_labels[self.mask_channel:(self.mask_channel+1)]
+        else pseudo_labels[:, self.mask_channel:(self.mask_channel+1)] # slicing must include batch (B, C, ...)
             label_mask = self._compute_label_mask_both_sides(mask_input) if self.threshold_from_both_sides\
                 else self._compute_label_mask_one_side(mask_input)
             if self.mask_channel is not None:
