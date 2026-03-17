@@ -249,8 +249,8 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
             with forward_context(), torch.no_grad():
                 # Compute the pseudo labels.
                 pseudo_labels, label_filter = self.pseudo_labeler(self.teacher, teacher_input)
-                pseudo_labels_inv = self.augmenter.teacher.reverse_transform(pseudo_labels)
-                label_filter_inv = self.augmenter.teacher.reverse_transform(label_filter)
+                pseudo_labels_inv = self.augmenter.teacher.reverse_transform(pseudo_labels.float())
+                label_filter_inv = self.augmenter.teacher.reverse_transform(label_filter.float())
 
             # If we have a sampler then check if the current batch matches the condition for inclusion in training.
             if self.sampler is not None:
@@ -262,7 +262,7 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
             # Perform unsupervised training
             with forward_context():
                 pred = self.model(model_input)
-                pred_inv = self.augmenter.student.reverse_transform(pred)
+                pred_inv = self.augmenter.student.reverse_transform(pred.float())
                 loss = self.unsupervised_loss(pred_inv, pseudo_labels_inv, label_filter_inv)
             backprop(loss)
 
@@ -324,13 +324,13 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
             with forward_context(), torch.no_grad():
                 # Compute the pseudo labels.
                 pseudo_labels, label_filter = self.pseudo_labeler(self.teacher, teacher_input)
-                pseudo_labels_inv = self.augmenter.teacher.reverse_transform(pseudo_labels)
-                label_filter_inv = self.augmenter.teacher.reverse_transform(label_filter)
+                pseudo_labels_inv = self.augmenter.teacher.reverse_transform(pseudo_labels.float())
+                label_filter_inv = self.augmenter.teacher.reverse_transform(label_filter.float())
 
             # Perform unsupervised training
             with forward_context():
                 unsup_pred = self.model(model_input)
-                unsup_pred_inv = self.augmenter.student.reverse_transform(unsup_pred)
+                unsup_pred_inv = self.augmenter.student.reverse_transform(unsup_pred.float())
                 unsupervised_loss = self.unsupervised_loss(unsup_pred_inv, pseudo_labels_inv, label_filter_inv)
 
             loss = (supervised_loss + unsupervised_loss) / 2
@@ -407,11 +407,11 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
 
             with forward_context():
                 pseudo_labels, label_filter = self.pseudo_labeler(self.teacher, teacher_input)
-                pseudo_labels_inv = self.augmenter.teacher.reverse_transform(pseudo_labels)
-                label_filter_inv = self.augmenter.teacher.reverse_transform(label_filter)
+                pseudo_labels_inv = self.augmenter.teacher.reverse_transform(pseudo_labels.float())
+                label_filter_inv = self.augmenter.teacher.reverse_transform(label_filter.float())
 
                 pred = self.model(model_input)
-                pred_inv = self.augmenter.student.reverse_transform(pred)
+                pred_inv = self.augmenter.student.reverse_transform(pred.float())
                 loss, metric = self.unsupervised_loss_and_metric(pred_inv, pseudo_labels_inv, label_filter_inv)
             loss_val += loss.item()
             metric_val += metric.item()
