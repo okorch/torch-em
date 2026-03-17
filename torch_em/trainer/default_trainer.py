@@ -19,9 +19,27 @@ import torch
 from .wandb_logger import WandbLogger
 from .tensorboard_logger import TensorboardLogger
 from ..util import auto_compile, get_constructor_arguments, is_compiled
+
+def setup_env():
+    """Prepends the linker and CUDA include paths required for FlashOptim kernel compilation."""
+    cuda_version = getattr(torch.version, "cuda", None)
+    if cuda_version is None:
+        print("Warning: PyTorch has no CUDA version; FlashOptim may fail.")
+        return
+
+    cuda_include = f"/usr/local/cuda-{cuda_version}/targets/x86_64-linux/include"
+    print("Setting up env:", cuda_include)
+    if not os.path.isdir(cuda_include):
+        cuda_include = "/usr/local/cuda/targets/x86_64-linux/include"
+    os.environ["LIBRARY_PATH"] = "/usr/lib64:" + os.environ.get("LIBRARY_PATH", "")
+    os.environ["CPATH"] = cuda_include + ":" + os.environ.get("CPATH", "")
+
+setup_env()
+
 try:
     from flashoptim import FlashAdamW, cast_model
 except ImportError:
+    print("FlashOptim not installed or failed to import. Using fallback optimizers.")
     FlashAdamW = None
     cast_model = None
 
