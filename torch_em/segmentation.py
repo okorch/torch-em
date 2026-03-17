@@ -474,6 +474,7 @@ def default_segmentation_trainer(
     device: Optional[Union[str, torch.device]] = None,
     log_image_interval: int = 100,
     mixed_precision: bool = True,
+    flash_optim: bool = False,
     early_stopping: Optional[int] = None,
     logger=TensorboardLogger,
     logger_kwargs: Optional[Dict[str, Any]] = None,
@@ -551,6 +552,7 @@ def default_segmentation_trainer(
     # CPU does not support mixed precision training.
     if device.type == "cpu":
         mixed_precision = False
+        flash_optim = False
 
     return trainer_class(
         name=name,
@@ -563,6 +565,7 @@ def default_segmentation_trainer(
         device=device,
         lr_scheduler=scheduler,
         mixed_precision=mixed_precision,
+        flash_optim=flash_optim,
         early_stopping=early_stopping,
         log_image_interval=log_image_interval,
         logger=logger,
