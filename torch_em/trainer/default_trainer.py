@@ -19,7 +19,11 @@ import torch
 from .wandb_logger import WandbLogger
 from .tensorboard_logger import TensorboardLogger
 from ..util import auto_compile, get_constructor_arguments, is_compiled
-
+try:
+    from flashoptim import FlashAdamW, cast_model
+except ImportError:
+    FlashAdamW = None
+    cast_model = None
 
 class DefaultTrainer:
     """Trainer class for training a segmentation network.
@@ -94,6 +98,7 @@ class DefaultTrainer:
         lr_scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         log_image_interval: int = 100,
         mixed_precision: bool = True,
+        flash_optim: bool = False,
         early_stopping: Optional[int] = None,
         logger=TensorboardLogger,
         logger_kwargs: Optional[Dict[str, Any]] = None,
@@ -107,6 +112,28 @@ class DefaultTrainer:
 
         if not all(hasattr(loader, "shuffle") for loader in [train_loader, val_loader]):
             raise ValueError(f"{self.__class__} requires each dataloader to have 'shuffle' attribute.")
+
+        if flash_optim:
+            if FlashAdamW is None:
+                raise ImportError(
+                    "flashoptim is required for flash_optim=True. Install via `pip install flashoptim`."
+                )
+
+            if not isinstance(optimizer, torch.optim.AdamW):
+                raise ValueError(
+                    f"FlashOptim currently supports AdamW only, got {type(optimizer).__name__}"
+                )
+            lr = optimizer.param_groups[0]["lr"]
+            cast_model(model, dtype=torch.bfloat16)
+            optimizer = FlashAdamW(model.parameters(), lr=lr)
+
+            lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min", factor=0.5, patience=5
+            )
+
+            # disable mixed precision
+            mixed_precision = False
+            compile_model = False
 
         self._generate_name = name is None
         self.name = name
@@ -129,6 +156,7 @@ class DefaultTrainer:
         self._best_epoch = 0
 
         self.mixed_precision = mixed_precision
+        self.flash_optim = flash_optim
         self.early_stopping = early_stopping
         self.train_time = 0.0
 
@@ -694,6 +722,12 @@ class DefaultTrainer:
             train_epoch = self._train_epoch_mixed
             validate = self._validate_mixed
             print("Training with mixed precision")
+
+        elif self.flash_optim:
+            train_epoch = self._train_epoch_flashoptim()
+            validate = self._validate_flashoptim()
+            print("Training with flash optim")
+
         else:
             train_epoch = self._train_epoch
             validate = self._validate
@@ -787,6 +821,13 @@ class DefaultTrainer:
             self._backprop_mixed
         )
 
+    def _train_epoch_flashoptim(self, progress):
+        return self._train_epoch_impl(
+            progress,
+            partial(torch.autocast, device_type="cuda", dtype=torch.bfloat16),
+            self._backprop
+        )
+
     def _forward_and_loss(self, x, y):
         pred = self.model(x)
         if self._iteration % self.log_image_interval == 0:
@@ -830,6 +871,15 @@ class DefaultTrainer:
     def _validate_mixed(self):
         return self._validate_impl(
             partial(torch.autocast, device_type="cpu" if self.device.type == "cpu" else "cuda")
+        )
+
+    def _validate_flashoptim(self):
+        return self._validate_impl(
+            partial(
+                torch.autocast,
+                device_type="cpu" if self.device.type == "cpu" else "cuda",
+                dtype=torch.bfloat16
+            )
         )
 
     def _validate_impl(self, forward_context):
