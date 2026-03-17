@@ -742,8 +742,8 @@ class DefaultTrainer:
             print("Training with mixed precision")
 
         elif self.flash_optim:
-            train_epoch = self._train_epoch_flashoptim()
-            validate = self._validate_flashoptim()
+            train_epoch = self._train_epoch_flashoptim
+            validate = self._validate_flashoptim
             print("Training with flash optim")
 
         else:
