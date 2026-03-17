@@ -866,6 +866,10 @@ class DefaultTrainer:
             if self.flash_optim:
                 x, y = x.to(dtype=torch.bfloat16), y.to(dtype=torch.bfloat16)
 
+            print(x.dtype, y.dtype)
+            for name, param in self.model.named_parameters():
+                print(name, param.dtype)
+
             self.optimizer.zero_grad()
 
             with forward_context():
