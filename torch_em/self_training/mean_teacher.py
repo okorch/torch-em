@@ -8,6 +8,12 @@ from torch_em.util import get_constructor_arguments
 
 from .logger import SelfTrainingTensorboardLogger
 
+try:
+    from flashoptim import FlashAdamW, cast_model
+except ImportError:
+    print("FlashOptim not installed or failed to import. Using fallback optimizers.")
+    FlashAdamW = None
+    cast_model = None
 
 class Dummy(torch.nn.Module):
     init_kwargs = {}
@@ -162,6 +168,9 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
         self.flash_optim = False
         if kwargs.get("flash_optim", False):
             self.flash_optim = True
+
+        if self.flash_optim:
+            cast_model(self.teacher, dtype=torch.bfloat16)
 
         self.augmenter = augmenter
         self._kwargs = kwargs

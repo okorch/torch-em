@@ -742,8 +742,8 @@ class DefaultTrainer:
             print("Training with mixed precision")
 
         elif self.flash_optim:
-            train_epoch = self._train_epoch_flashoptim
-            validate = self._validate_flashoptim
+            train_epoch = self._train_epoch
+            validate = self._validate
             print("Training with flash optim")
 
         else:
@@ -839,13 +839,6 @@ class DefaultTrainer:
             self._backprop_mixed
         )
 
-    def _train_epoch_flashoptim(self, progress):
-        return self._train_epoch_impl(
-            progress,
-            forward_context=lambda: torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16),
-            backprop=self._backprop
-        )
-
     def _forward_and_loss(self, x, y):
         pred = self.model(x)
         if self._iteration % self.log_image_interval == 0:
@@ -867,8 +860,7 @@ class DefaultTrainer:
                 x, y = x.to(dtype=torch.bfloat16), y.to(dtype=torch.bfloat16)
 
             print(x.dtype, y.dtype)
-            for name, param in self.model.named_parameters():
-                print(name, param.dtype)
+
 
             self.optimizer.zero_grad()
 
@@ -896,15 +888,6 @@ class DefaultTrainer:
     def _validate_mixed(self):
         return self._validate_impl(
             partial(torch.autocast, device_type="cpu" if self.device.type == "cpu" else "cuda")
-        )
-
-    def _validate_flashoptim(self):
-        return self._validate_impl(
-            partial(
-                torch.autocast,
-                device_type="cpu" if self.device.type == "cpu" else "cuda",
-                dtype=torch.bfloat16
-            )
         )
 
     def _validate_impl(self, forward_context):
