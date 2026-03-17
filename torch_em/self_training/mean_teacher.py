@@ -159,6 +159,10 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
             for param in self.teacher.parameters():
                 param.requires_grad = False
 
+        self.flash_optim = False
+        if kwargs.get("flash_optim", False):
+            self.flash_optim = True
+
         self.augmenter = augmenter
         self._kwargs = kwargs
 
@@ -227,6 +231,10 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
             xu = xu.to(self.device, non_blocking=True)
 
             xu1, xu2 = self.augmenter.teacher.transform(xu), self.augmenter.student.transform(xu)
+
+            if self.flash_optim:
+                xu1, xu2 = xu1.to(dtype=torch.bfloat16), xu2.to(dtype=torch.bfloat16)
+
             teacher_input, model_input = xu1, xu2
 
             with forward_context(), torch.no_grad():
@@ -289,6 +297,11 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
             xu = xu.to(self.device, non_blocking=True)
 
             xu1, xu2 = self.augmenter.teacher.transform(xu), self.augmenter.student.transform(xu)
+
+            if self.flash_optim:
+                xu1, xu2 = xu1.to(dtype=torch.bfloat16), xu2.to(dtype=torch.bfloat16)
+                xs, ys = xs.to(dtype=torch.bfloat16), ys.to(dtype=torch.bfloat16)
+
             teacher_input, model_input = xu1, xu2
 
             # Perform supervised training.
@@ -353,6 +366,10 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
 
         for x, y in self.supervised_val_loader:
             x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+
+            if self.flash_optim:
+               x,y = x.to(dtype=torch.bfloat16), y.to(dtype=torch.bfloat16)
+
             with forward_context():
                 pred = self.model(x)
                 loss, metric = self.supervised_loss_and_metric(pred, y)
@@ -375,6 +392,10 @@ class MeanTeacherTrainer(torch_em.trainer.DefaultTrainer):
             x = x.to(self.device, non_blocking=True)
             x1, x2 = self.augmenter.teacher.transform(x), self.augmenter.student.transform(x)
             teacher_input, model_input = x1, x2
+
+            if self.flash_optim:
+                x1, x2 = x1.to(dtype=torch.bfloat16), x2.to(dtype=torch.bfloat16)
+
             with forward_context():
                 pseudo_labels, label_filter = self.pseudo_labeler(self.teacher, teacher_input)
                 pseudo_labels_inv = self.augmenter.teacher.reverse_transform(pseudo_labels)

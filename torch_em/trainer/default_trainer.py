@@ -842,8 +842,8 @@ class DefaultTrainer:
     def _train_epoch_flashoptim(self, progress):
         return self._train_epoch_impl(
             progress,
-            partial(torch.autocast, device_type="cuda", dtype=torch.bfloat16),
-            self._backprop
+            forward_context=lambda: torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16),
+            backprop=self._backprop
         )
 
     def _forward_and_loss(self, x, y):
@@ -862,6 +862,9 @@ class DefaultTrainer:
         t_per_iter = time.time()
         for x, y in self.train_loader:
             x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+
+            if self.flash_optim:
+                x, y = x.to(dtype=torch.bfloat16), y.to(dtype=torch.bfloat16)
 
             self.optimizer.zero_grad()
 
@@ -909,6 +912,10 @@ class DefaultTrainer:
         with torch.no_grad():
             for x, y in self.val_loader:
                 x, y = x.to(self.device, non_blocking=True), y.to(self.device, non_blocking=True)
+
+                if self.flash_optim:
+                    x, y = x.to(dtype=torch.bfloat16), y.to(dtype=torch.bfloat16)
+
                 with forward_context():
                     pred, loss = self._forward_and_loss(x, y)
                     metric = self.metric(pred, y)
