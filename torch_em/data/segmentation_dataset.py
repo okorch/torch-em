@@ -58,7 +58,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
         if patch_shape is None:
             return 1
         else:
-            n_samples = ceil(np.prod([float(sh / csh) for sh, csh in zip(shape, patch_shape)]))
+            n_samples = int(np.prod([np.ceil(sh / csh) for sh, csh in zip(shape, patch_shape)]))
             return n_samples
 
     def __init__(

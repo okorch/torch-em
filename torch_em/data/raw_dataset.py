@@ -45,7 +45,7 @@ class RawDataset(torch.utils.data.Dataset):
 
     @staticmethod
     def compute_len(shape, patch_shape):
-        n_samples = int(np.prod([float(sh / csh) for sh, csh in zip(shape, patch_shape)]))
+        n_samples = int(np.prod([np.ceil(sh / csh) for sh, csh in zip(shape, patch_shape)]))
         return n_samples
 
     def __init__(
