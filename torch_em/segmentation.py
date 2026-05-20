@@ -1,11 +1,16 @@
 import os
+import warnings
 from glob import glob
 from typing import Any, Dict, Optional, Union, Tuple, List, Callable
+from collections import Counter
+from math import ceil
 
 import numpy as np
 import torch
 import torch.utils.data
 from torch.utils.data import DataLoader
+
+import h5py
 
 from .loss import DiceLoss
 from .util import load_data
@@ -20,23 +25,203 @@ DEFAULT_SCHEDULER_KWARGS = {"mode": "min", "factor": 0.5, "patience": 5}
 """@private
 """
 
-
 #
 # convenience functions for segmentation loaders
 #
 
 # TODO implement balanced and make it the default
+# TODO check if all dataset are used.
 # def samples_to_datasets(n_samples, raw_paths, raw_key, split="balanced"):
-def samples_to_datasets(n_samples, raw_paths, raw_key, split="uniform"):
+def samples_to_datasets(n_samples, raw_paths, raw_key,
+                        split="uniform",
+                        min_per_ds = 1,
+                        stratification_list = None,
+                        patch_shape = None,
+                        allow_clipping = True):
     """@private
+    If no n_samples specified set n_samples = max_capacity
+    and split = "balanced"
     """
-    assert split in ("balanced", "uniform")
+    assert split in ("balanced", "uniform", "stratified")
+
+    def _get_ds_shape(raw_path, raw_key):
+        with h5py.File(raw_path, "r") as f:
+            return f[raw_key].shape
+
+    def _get_max_samples(shape, patch_shape):
+        if patch_shape is None:
+            return 1
+        else:
+            n_samples = ceil(np.prod([float(sh / csh) for sh, csh in zip(shape, patch_shape)]))
+            return n_samples
+
     n_datasets = len(raw_paths)
+
     if split == "uniform":
         # even distribution of samples to datasets
         samples_per_ds = n_samples // n_datasets
         divider = n_samples % n_datasets
         return [samples_per_ds + 1 if ii < divider else samples_per_ds for ii in range(n_datasets)]
+
+    elif split == "balanced":
+
+        if patch_shape is None:
+            raise ValueError("patch_shape must be provided for balanced split")
+
+        ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
+        caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
+
+        total_cap = caps.sum()
+        if total_cap == 0:
+            raise ValueError("All datasets have zero capacity")
+
+        if n_samples > total_cap:
+            message = (
+                f"Requested n_samples={n_samples}, "
+                f"but only {total_cap} available. "
+            )
+            if allow_clipping:
+                message += "Clipping to capacity."
+                warnings.warn(message, RuntimeWarning)
+                n_samples = total_cap
+                oversample = False
+            else:
+                message += "Oversampling enabled."
+                warnings.warn(message, RuntimeWarning)
+                oversample = True
+
+        else:
+            oversample = False
+
+        if oversample:
+            weights = caps / caps.sum()
+        else:
+            weights = caps / total_cap
+
+        required = min_per_ds * n_datasets
+
+        if min_per_ds > 0:
+            if n_samples < required:
+                raise ValueError(
+                    f"Need at least {required} samples "
+                    f"to sample each dataset "
+                    f"{min_per_ds} times."
+                )
+
+            if not oversample:
+                invalid = np.where(caps < min_per_ds)[0]
+                if len(invalid) > 0:
+                    raise ValueError(
+                        f"Datasets {invalid.tolist()} have capacity "
+                        f"smaller than min_per_ds={min_per_ds}"
+                    )
+
+            alloc = np.full(n_datasets, min_per_ds, dtype=int)
+            remaining_budget = n_samples - required
+
+        else:
+            if n_samples < n_datasets:
+                warnings.warn(
+                    "Some datasets may receive 0 samples "
+                    "because min_per_ds=0.",
+                    RuntimeWarning,
+                )
+
+            alloc = np.zeros(n_datasets, dtype=int)
+            remaining_budget = n_samples
+
+        raw = remaining_budget * weights
+        extra = np.floor(raw).astype(int)
+        alloc += extra
+
+        if not oversample:
+            alloc = np.minimum(alloc, caps)
+
+        remaining = n_samples - alloc.sum()
+        frac = raw - extra
+        order = np.argsort(frac)[::-1]
+
+        for i in order:
+            if remaining == 0:
+                break
+            if oversample or alloc[i] < caps[i]:
+                alloc[i] += 1
+                remaining -= 1
+
+        i = 0
+        n = len(alloc)
+
+        while remaining > 0:
+            idx = i % n
+            if oversample or alloc[idx] < caps[idx]:
+                alloc[idx] += 1
+                remaining -= 1
+
+            i += 1
+
+        return alloc.tolist()
+
+    elif split == "stratified":
+        if stratification_list is None or len(stratification_list) != n_datasets:
+            raise ValueError("Invalid stratification_list")
+
+        counts = Counter(stratification_list)
+        groups = list(counts.keys())
+        n_groups = len(groups)
+        strat_arr = np.array(stratification_list)
+
+        group_to_indices = {
+            g: np.where(strat_arr == g)[0]
+            for g in groups
+        }
+
+        ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
+        caps = np.array( [_get_max_samples(s, patch_shape) for s in ds_shapes],  dtype=int)
+
+        group_caps = {g: caps[idxs].sum() for g, idxs in group_to_indices.items()}
+
+        min_group_cap = min(group_caps.values())
+        max_total_samples = min_group_cap * n_groups
+
+        if n_samples > max_total_samples:
+            message = (
+                f"[stratified] Requested n_samples={n_samples}, "
+                f"but max feasible is {max_total_samples}. "
+            )
+            if allow_clipping:
+                message += "Clipped to max capacity."
+            else:
+                message += "Oversampling enabled."
+
+            warnings.warn(message, RuntimeWarning)
+
+            if allow_clipping:
+                n_samples = max_total_samples
+
+        base = n_samples // n_groups
+        rem = n_samples % n_groups
+        result = np.zeros(n_datasets, dtype=int)
+
+        for i, group in enumerate(groups):
+            group_total = base + (i < rem)
+            idxs = group_to_indices[group]
+            group_paths = [raw_paths[j] for j in idxs]
+            group_alloc = samples_to_datasets(
+                n_samples=group_total,
+                raw_paths=group_paths,
+                raw_key=raw_key,
+                split="balanced",
+                patch_shape=patch_shape,
+                allow_clipping = allow_clipping
+            )
+            result[idxs] = group_alloc
+
+        print(f'GROUP : n_samples')
+        for ds in np.unique(np.array(stratification_list)):
+            n = np.array(result.tolist())[np.array(stratification_list) == ds].sum()
+            print(f'{ds} : {n}')
+
+        return result.tolist()
     else:
         # distribution of samples to dataset based on the dataset lens
         raise NotImplementedError
@@ -125,10 +310,20 @@ def _load_segmentation_dataset(raw_paths, raw_key, label_paths, label_key, **kwa
             assert len(rois) == len(label_paths)
             assert all(isinstance(roi, tuple) for roi in rois), f"{rois}"
         n_samples = kwargs.pop("n_samples", None)
+        stratification_list = kwargs.pop("stratify", None)
 
-        samples_per_ds = (
-            [None] * len(raw_paths) if n_samples is None else samples_to_datasets(n_samples, raw_paths, raw_key)
-        )
+        if isinstance(stratification_list, list) and n_samples != None:
+            # TODO check maybe replace [None] * len(raw_paths)
+            samples_per_ds = samples_to_datasets(n_samples, raw_paths, raw_key,
+                                                 split="stratified",
+                                                 stratification_list = stratification_list,
+                                                 patch_shape= kwargs.get("patch_shape", None))
+
+
+        else:
+            samples_per_ds = (
+                 [None] * len(raw_paths) if n_samples is None else samples_to_datasets(n_samples,raw_paths,raw_key)
+            )
         ds = []
         for i, (raw_path, label_path) in enumerate(zip(raw_paths, label_paths)):
             roi = None if rois is None else rois[i]
@@ -234,6 +429,7 @@ def default_segmentation_loader(
     label_dtype: torch.dtype = torch.float32,
     rois: Optional[Union[slice, Tuple[slice, ...]]] = None,
     n_samples: Optional[int] = None,
+    stratify: List[Any] = None,
     sampler: Optional[Callable] = None,
     ndim: Optional[int] = None,
     is_seg_dataset: Optional[bool] = None,
@@ -304,6 +500,7 @@ def default_segmentation_loader(
         label_dtype=label_dtype,
         rois=rois,
         n_samples=n_samples,
+        stratify=stratify,
         sampler=sampler,
         ndim=ndim,
         is_seg_dataset=is_seg_dataset,
@@ -331,6 +528,7 @@ def default_segmentation_dataset(
     label_dtype: torch.dtype = torch.float32,
     rois: Optional[Union[slice, Tuple[slice, ...]]] = None,
     n_samples: Optional[int] = None,
+    stratify: List[Any] = None,
     sampler: Optional[Callable] = None,
     ndim: Optional[int] = None,
     is_seg_dataset: Optional[bool] = None,
@@ -413,6 +611,7 @@ def default_segmentation_dataset(
             transform=transform,
             rois=rois,
             n_samples=n_samples,
+            stratify=stratify,
             sampler=sampler,
             ndim=ndim,
             dtype=dtype,
