@@ -34,10 +34,10 @@ DEFAULT_SCHEDULER_KWARGS = {"mode": "min", "factor": 0.5, "patience": 5}
 # def samples_to_datasets(n_samples, raw_paths, raw_key, split="balanced"):
 def samples_to_datasets(n_samples, raw_paths, raw_key,
                         split="uniform",
-                        min_per_ds = 1,
+                        min_per_ds = 0,
                         stratification_list = None,
                         patch_shape = None,
-                        allow_clipping = True):
+                        allow_clipping = False):
     """@private
     If no n_samples specified set n_samples = max_capacity
     and split = "balanced"
@@ -309,11 +309,13 @@ def _load_segmentation_dataset(raw_paths, raw_key, label_paths, label_key, **kwa
         if rois is not None:
             assert len(rois) == len(label_paths)
             assert all(isinstance(roi, tuple) for roi in rois), f"{rois}"
+
         n_samples = kwargs.pop("n_samples", None)
         stratification_list = kwargs.pop("stratify", None)
 
         if isinstance(stratification_list, list) and n_samples != None:
             # TODO check maybe replace [None] * len(raw_paths)
+            print('Stratified data split')
             samples_per_ds = samples_to_datasets(n_samples, raw_paths, raw_key,
                                                  split="stratified",
                                                  stratification_list = stratification_list,
