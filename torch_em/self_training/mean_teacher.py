@@ -589,7 +589,7 @@ class MeanTeacherTrainerWithInvertibleAugmentations(MeanTeacherTrainer):
                 # We pass the model, the input and the labels to the supervised loss function,
                 # so that how the loss is calculated stays flexible, e.g. to enable ELBO for PUNet.
                 supervised_pred = self.model(xs)
-                supervised_loss = self.supervised_loss(supervised_pred, ys)
+                supervised_loss = self.supervised_loss(self.model, supervised_pred, ys)
 
             with forward_context(), torch.no_grad():
                 # Compute the pseudo labels.

@@ -471,6 +471,7 @@ def default_segmentation_loader(
         label_dtype: The return data type of the label data.
         rois: Regions of interest in the data.  If given, the data will only be loaded from the corresponding area.
         n_samples: The length of the underlying dataset. If None, the length will be set to `len(raw_paths)`.
+        stratify:
         sampler: Sampler for rejecting samples according to a defined criterion.
             The sampler must be a callable that accepts the raw data (as numpy arrays) as input.
         ndim: The spatial dimensionality of the data. If None, will be derived from the raw data.

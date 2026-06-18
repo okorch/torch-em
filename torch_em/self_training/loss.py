@@ -404,3 +404,4 @@ class UniMatchv2LossAndMetric(nn.Module):
                 loss = self.loss(prediction * label_filter, labels * label_filter)
             metric = self.metric(prediction, labels)
             return loss, metric
+
