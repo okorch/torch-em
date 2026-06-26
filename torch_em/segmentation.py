@@ -11,6 +11,11 @@ import torch.utils.data
 from torch.utils.data import DataLoader
 
 import h5py
+try:
+    import tifffile
+except ImportError:
+    tifffile = None
+from pathlib import Path
 
 from .loss import DiceLoss
 from .util import load_data
@@ -44,9 +49,19 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
     """
     assert split in ("balanced", "uniform", "stratified")
 
-    def _get_ds_shape(raw_path, raw_key):
-        with h5py.File(raw_path, "r") as f:
-            return f[raw_key].shape
+    def _get_ds_shape(raw_path, raw_key=None):
+        ext = Path(raw_path).suffix.lower()
+
+        if ext in [".h5", ".hdf5"]:
+            with h5py.File(raw_path, "r") as f:
+                return f[raw_key].shape
+
+        elif ext in [".tif", ".tiff"]:
+            if tifffile is None:
+                raise ImportError("tifffile is required for reading TIFF files")
+
+            with tifffile.TiffFile(raw_path) as tif:
+                return tif.asarray().shape
 
     def _get_max_samples(shape, patch_shape):
         if patch_shape is None:
