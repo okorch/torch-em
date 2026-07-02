@@ -49,9 +49,11 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
     """
     if type(patch_shape) is list:
         print('Multiple sized dataset')
+        print(patch_shape)
         mult_size_flag = True
     else:
         print('Consistent sized dataset')
+        print(patch_shape)
         mult_size_flag = False
 
     assert split in ("balanced", "uniform", "stratified")
@@ -203,11 +205,12 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
         }
 
         ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
-
         if mult_size_flag:
             caps = np.array([_get_max_samples(ds_shapes[i], patch_shape[i]) for i in range(len(ds_shapes))], dtype=int)
         else:
             caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
+
+        print("Total capacity of the dataset is:", sum(caps))
 
         group_caps = {g: caps[idxs].sum() for g, idxs in group_to_indices.items()}
 
