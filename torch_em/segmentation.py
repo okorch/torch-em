@@ -84,8 +84,9 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
             raise ValueError("patch_shape must be provided for balanced split")
 
         ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
+        print(patch_shape)
 
-        if type(patch_shape) is list:
+        if len(patch_shape) == len(ds_shapes):
             caps = np.array([_get_max_samples(ds_shapes[i], patch_shape[i]) for i in range(len(ds_shapes))], dtype=int)
         else:
             caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
