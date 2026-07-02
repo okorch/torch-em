@@ -41,7 +41,7 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
                         split="uniform",
                         min_per_ds = 0,
                         stratification_list = None,
-                        patch_shape = None,
+                        patch_shape = None, # List of tuples or tuple.
                         allow_clipping = False):
     """@private
     If no n_samples specified set n_samples = max_capacity
@@ -84,7 +84,11 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
             raise ValueError("patch_shape must be provided for balanced split")
 
         ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
-        caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
+
+        if type(patch_shape) is list:
+            caps = np.array([_get_max_samples(ds_shapes[i], patch_shape[i]) for i in range(len(ds_shapes))], dtype=int)
+        else:
+            caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
 
         total_cap = caps.sum()
         if total_cap == 0:
@@ -191,7 +195,11 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
         }
 
         ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
-        caps = np.array( [_get_max_samples(s, patch_shape) for s in ds_shapes],  dtype=int)
+
+        if type(patch_shape) is list:
+            caps = np.array( [_get_max_samples(ds_shapes[i], patch_shape[i]) for i in range(len(ds_shapes))],  dtype=int)
+        else:
+            caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
 
         group_caps = {g: caps[idxs].sum() for g, idxs in group_to_indices.items()}
 
