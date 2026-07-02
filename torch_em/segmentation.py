@@ -49,10 +49,12 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
     """
     if type(patch_shape) is list:
         print('Multiple sized dataset')
+        print(len(patch_shape), len(stratification_list), len(raw_paths))
         mult_size_flag = True
     else:
         print('Consistent sized dataset')
         mult_size_flag = False
+        print(len(patch_shape), len(stratification_list), len(raw_paths))
 
     assert split in ("balanced", "uniform", "stratified")
 
