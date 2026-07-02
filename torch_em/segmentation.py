@@ -47,6 +47,13 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
     If no n_samples specified set n_samples = max_capacity
     and split = "balanced"
     """
+    if type(patch_shape) is list:
+        print('Multiple sized dataset')
+        mult_size_flag = True
+    else:
+        print('Consistent sized dataset')
+        mult_size_flag = False
+
     assert split in ("balanced", "uniform", "stratified")
 
     def _get_ds_shape(raw_path, raw_key=None):
@@ -84,9 +91,8 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
             raise ValueError("patch_shape must be provided for balanced split")
 
         ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
-        print(patch_shape)
 
-        if len(patch_shape) == len(ds_shapes):
+        if mult_size_flag:
             caps = np.array([_get_max_samples(ds_shapes[i], patch_shape[i]) for i in range(len(ds_shapes))], dtype=int)
         else:
             caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
@@ -197,8 +203,8 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
 
         ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
 
-        if type(patch_shape) is list:
-            caps = np.array( [_get_max_samples(ds_shapes[i], patch_shape[i]) for i in range(len(ds_shapes))],  dtype=int)
+        if mult_size_flag:
+            caps = np.array([_get_max_samples(ds_shapes[i], patch_shape[i]) for i in range(len(ds_shapes))], dtype=int)
         else:
             caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
 
