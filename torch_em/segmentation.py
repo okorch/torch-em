@@ -210,6 +210,7 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
         else:
             caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
 
+        print("caps", *zip(caps, ds_shapes, patch_shape))
         print("Total capacity of the dataset is:", sum(caps))
 
         group_caps = {g: caps[idxs].sum() for g, idxs in group_to_indices.items()}
