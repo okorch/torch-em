@@ -47,13 +47,42 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
     If no n_samples specified set n_samples = max_capacity
     and split = "balanced"
     """
-    if type(patch_shape) is list:
+    if stratification_list is not None:
+        if len(raw_paths) != len(stratification_list):
+            warnings.warn(
+                f"Length mismatch: raw_paths={len(raw_paths)} "
+                f"vs stratification_list={len(stratification_list)}",
+                RuntimeWarning
+            )
+            raise ValueError("stratification_list must match raw_paths length")
+
+    if isinstance(patch_shape, list):
+        if len(patch_shape) != len(raw_paths):
+            warnings.warn(
+                f"Multiple patch shapes but mismatch: "
+                f"patch_shape={len(patch_shape)} vs raw_paths={len(raw_paths)}",
+                RuntimeWarning
+            )
+            raise ValueError("patch_shape list must match raw_paths length")
+
+    else:
+        if len(patch_shape) > 3:
+            warnings.warn(
+                f"Expected 2D or 3D patch_shape, got {len(patch_shape)}",
+                RuntimeWarning
+            )
+            raise ValueError("patch_shape must be length 3 or 2 for single-size mode")
+
+    if type(patch_shape) is list and len(set(patch_shape)) != 1:
         print('Multiple sized dataset')
-        print(patch_shape)
         mult_size_flag = True
+
+    elif type(patch_shape) is list and len(set(patch_shape)) == 1:
+        print('Consistent sized dataset')
+        mult_size_flag = False
+        patch_shape = patch_shape[0]
     else:
         print('Consistent sized dataset')
-        print(patch_shape)
         mult_size_flag = False
 
     assert split in ("balanced", "uniform", "stratified")
@@ -205,18 +234,24 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
         }
 
         ds_shapes = [_get_ds_shape(p, raw_key) for p in raw_paths]
+
         if mult_size_flag:
             caps = np.array([_get_max_samples(ds_shapes[i], patch_shape[i]) for i in range(len(ds_shapes))], dtype=int)
         else:
             caps = np.array([_get_max_samples(s, patch_shape) for s in ds_shapes], dtype=int)
 
-        print("caps", *zip(caps, ds_shapes, patch_shape))
         print("Total capacity of the dataset is:", sum(caps))
 
         group_caps = {g: caps[idxs].sum() for g, idxs in group_to_indices.items()}
 
         min_group_cap = min(group_caps.values())
         max_total_samples = min_group_cap * n_groups
+
+        if (n_samples is None): # If no samples was requested, than assume that we request minimum possible number of samples without oversampling
+            n_samples = max_total_samples
+            print(f'No number of samples was specified for stratified split. '
+                  f'Therefore set max number of samples as smaller group size times number of groups. '
+                  f'Requested n_samples = {n_samples}')
 
         if n_samples > max_total_samples:
             message = (
@@ -241,12 +276,15 @@ def samples_to_datasets(n_samples, raw_paths, raw_key,
             group_total = base + (i < rem)
             idxs = group_to_indices[group]
             group_paths = [raw_paths[j] for j in idxs]
+
+            patch_shape_group = [patch_shape[j] for j in idxs] if mult_size_flag else patch_shape
+
             group_alloc = samples_to_datasets(
                 n_samples=group_total,
                 raw_paths=group_paths,
                 raw_key=raw_key,
                 split="balanced",
-                patch_shape=patch_shape,
+                patch_shape=patch_shape_group,
                 allow_clipping = allow_clipping
             )
             result[idxs] = group_alloc
