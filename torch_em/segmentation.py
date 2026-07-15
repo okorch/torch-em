@@ -485,6 +485,10 @@ def default_segmentation_loader(
     with_padding: bool = True,
     z_ext: Optional[int] = None,
     pre_label_transform: Optional[Callable] = None,
+    orig_spacing_list=None,
+    rescale_transform=None,
+    target_spacing=None,
+
     **loader_kwargs,
 ) -> torch.utils.data.DataLoader:
     """Get data loader for training a segmentation network.
@@ -557,6 +561,9 @@ def default_segmentation_loader(
         z_ext=z_ext,
         verify_paths=verify_paths,
         pre_label_transform=pre_label_transform,
+        orig_spacing_list=orig_spacing_list,
+        rescale_transform=rescale_transform,
+        target_spacing=target_spacing,
     )
     return get_data_loader(ds, batch_size=batch_size, **loader_kwargs)
 
