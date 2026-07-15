@@ -317,6 +317,9 @@ def is_segmentation_dataset(raw_paths, raw_key, label_paths, label_key):
 
 def _load_segmentation_dataset(raw_paths, raw_key, label_paths, label_key, **kwargs):
     rois = kwargs.pop("rois", None)
+    orig_spacing_list = kwargs.pop("orig_spacing_list", None)
+    target_spacing = kwargs.pop("target_spacing", None)
+
     if isinstance(raw_paths, str):
         if rois is not None:
             assert isinstance(rois, (tuple, slice))
@@ -328,10 +331,27 @@ def _load_segmentation_dataset(raw_paths, raw_key, label_paths, label_key, **kwa
         if rois is not None:
             assert len(rois) == len(label_paths)
             assert all(isinstance(roi, tuple) for roi in rois), f"{rois}"
+        if orig_spacing_list is not None:
+            assert len(orig_spacing_list) == len(label_paths)
 
         n_samples = kwargs.pop("n_samples", None)
-        stratification_list = kwargs.pop("stratify", None)
+
+        stratification_list = kwargs.pop("stratify", None) # Make sense to use only with more than 1 crop
+        if stratification_list is not None:
+            assert len(stratification_list) == len(label_paths)
+
         patch_shape = kwargs.get("patch_shape", None)
+
+        if (orig_spacing_list is not None) and (target_spacing is not None):  # If we have different resolution data
+            patch_shapes = [
+                tuple(int(ps / (sp / ts))
+                      for ps, sp, ts in zip(patch_shape, spacing, target_spacing)
+                      )
+                for spacing in orig_spacing_list
+            ]
+        else:
+            patch_shapes = patch_shape  # Stick to even resolution pipline
+            orig_spacing_list = [None] * len(label_paths)
 
         if isinstance(stratification_list, list):
             # TODO check maybe replace [None] * len(raw_paths)
@@ -339,17 +359,23 @@ def _load_segmentation_dataset(raw_paths, raw_key, label_paths, label_key, **kwa
             samples_per_ds = samples_to_datasets(n_samples, raw_paths, raw_key,
                                                  split="stratified",
                                                  stratification_list = stratification_list,
-                                                 patch_shape = patch_shape)
+                                                 patch_shape = patch_shapes)
         else:
-            print('Stratified data split')
+            print('Balanced data split')
             samples_per_ds = (
-                 [None] * len(raw_paths) if n_samples is None else samples_to_datasets(n_samples,raw_paths,raw_key)
+                 [None] * len(raw_paths) if n_samples is None else samples_to_datasets(n_samples, raw_paths, raw_key,
+                                                                                       patch_shape = patch_shapes)
             )
+
         ds = []
         for i, (raw_path, label_path) in enumerate(zip(raw_paths, label_paths)):
             roi = None if rois is None else rois[i]
+            orig_spacing = None if orig_spacing_list is None else orig_spacing_list[i]
+
             dset = SegmentationDataset(
-                raw_path, raw_key, label_path, label_key, roi=roi, n_samples=samples_per_ds[i], **kwargs
+                raw_path, raw_key, label_path, label_key, roi=roi,
+                n_samples=samples_per_ds[i], orig_spacing=orig_spacing,
+                target_spacing=target_spacing, **kwargs
             )
             ds.append(dset)
         ds = ConcatDataset(*ds)
@@ -559,6 +585,10 @@ def default_segmentation_dataset(
     with_padding: bool = True,
     z_ext: Optional[int] = None,
     pre_label_transform: Optional[Callable] = None,
+
+    orig_spacing_list=None,
+    rescale_transform=None,
+    target_spacing=None
 ) -> torch.utils.data.Dataset:
     """Get data set for training a segmentation network.
 
@@ -642,6 +672,10 @@ def default_segmentation_dataset(
             with_padding=with_padding,
             z_ext=z_ext,
             pre_label_transform=pre_label_transform,
+
+            orig_spacing_list=orig_spacing_list,
+            rescale_transform=rescale_transform,
+            target_spacing=target_spacing
         )
 
     else:

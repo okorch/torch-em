@@ -54,12 +54,17 @@ class SegmentationDataset(torch.utils.data.Dataset):
     """
 
     @staticmethod
-    def compute_len(shape, patch_shape):
-        if patch_shape is None:
-            return 1
-        else:
-            n_samples = ceil(np.prod([float(sh / csh) for sh, csh in zip(shape, patch_shape)]))
-            return n_samples
+    def compute_len(shape, patch_shape,
+            original_spacing=None,
+            target_spacing=None,
+    ):
+        if original_spacing is not None and target_spacing is not None:
+            # Recalculate patch shape
+            patch_shape = tuple(ps * (ts / sp)
+                                for ps, sp, ts in zip(patch_shape, original_spacing, target_spacing)
+            )
+
+        return ceil(np.prod([sh / ps for sh, ps in zip(shape, patch_shape) ]))
 
     def __init__(
         self,
@@ -83,6 +88,10 @@ class SegmentationDataset(torch.utils.data.Dataset):
         with_padding: bool = True,
         z_ext: Optional[int] = None,
         pre_label_transform: Optional[Callable] = None,
+
+        orig_spacing: Optional[Tuple[float, float, float]] = None,
+        rescale_transform: Optional[Callable] = None,
+        target_spacing: Optional[Tuple[float, float, float]] = None
     ):
         self.raw_path = raw_path
         self.raw_key = raw_key
@@ -128,12 +137,26 @@ class SegmentationDataset(torch.utils.data.Dataset):
         self.dtype = dtype
         self.label_dtype = label_dtype
 
-        self._len = self.compute_len(self.shape, self.patch_shape) if n_samples is None else n_samples
+        # self._len = self.compute_len(self.shape, self.patch_shape) if n_samples is None else n_samples
 
         self.z_ext = z_ext
 
-        self.sample_shape = patch_shape
+        # self.sample_shape = patch_shape
         self.trafo_halo = None
+
+        self.orig_spacing = orig_spacing
+        self.rescale_transform = rescale_transform
+        self.target_spacing = target_spacing
+
+        # TODO compute len with correct patch shapes when n_samples is none
+        self._len = self.compute_len(self.shape, self.patch_shape, self.orig_spacing, self.target_spacing) \
+            if n_samples is None else n_samples
+
+        # spacing for this sample. If target_spacing or orig_spacing is None, returns patch_shape
+        self.sample_shape = self.compute_pre_crop_shape(self.patch_shape, self.target_spacing,
+                                                   self.orig_spacing)
+
+
         # TODO add support for trafo halo: asking for a bigger bounding box before applying the trafo,
         # which is then cut. See code below; but this ne needs to be properly tested
 
@@ -223,9 +246,29 @@ class SegmentationDataset(torch.utils.data.Dataset):
             bb = (tensor.ndim - len(bb)) * (slice(None),) + bb
         return tensor[bb]
 
+    def compute_pre_crop_shape(self, patch_shape,
+                               target_spacing=None,
+                               orig_spacing=None):
+        '''
+        spacing: tuple (z, x, y)
+        '''
+        if target_spacing is None or orig_spacing is None:
+            return patch_shape
+        else:
+            return tuple(
+                int(round(ps * (ts / os)))
+                for ps, ts, os in zip(patch_shape, target_spacing, orig_spacing)
+            )
+
     def __getitem__(self, index):
         raw, labels = self._get_sample(index)
         initial_label_dtype = labels.dtype
+
+        if self.rescale_transform is not None:
+            print(raw.shape)
+            raw = self.rescale_transform(raw, self.orig_spacing, self.target_spacing)
+            labels = self.rescale_transform(labels, self.orig_spacing, self.target_spacing)
+            print(raw.shape)
 
         if self.raw_transform is not None:
             raw = self.raw_transform(raw)
