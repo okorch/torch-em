@@ -319,6 +319,7 @@ def _load_segmentation_dataset(raw_paths, raw_key, label_paths, label_key, **kwa
     rois = kwargs.pop("rois", None)
     orig_spacing_list = kwargs.pop("orig_spacing_list", None)
     target_spacing = kwargs.pop("target_spacing", None)
+    stratification_list = kwargs.pop("stratify", None)  # Make sense to use only with more than 1 crop
 
     if isinstance(raw_paths, str):
         if rois is not None:
@@ -336,7 +337,6 @@ def _load_segmentation_dataset(raw_paths, raw_key, label_paths, label_key, **kwa
 
         n_samples = kwargs.pop("n_samples", None)
 
-        stratification_list = kwargs.pop("stratify", None) # Make sense to use only with more than 1 crop
         if stratification_list is not None:
             assert len(stratification_list) == len(label_paths)
 
@@ -350,7 +350,7 @@ def _load_segmentation_dataset(raw_paths, raw_key, label_paths, label_key, **kwa
                 for spacing in orig_spacing_list
             ]
         else:
-            patch_shapes = patch_shape  # Stick to even resolution pipline
+            patch_shapes = [patch_shape] * len(label_paths)  # Stick to even resolution pipline
             orig_spacing_list = [None] * len(label_paths)
 
         if isinstance(stratification_list, list):
